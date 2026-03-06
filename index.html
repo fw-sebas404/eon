@@ -2,52 +2,37 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>EÓN: SOBRECARGA</title>
+    <title>EÓN: HORIZONTE DE EVENTOS</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        canvas { border: 2px solid #555; background: #020205; cursor: none; }
+        canvas { border: 2px solid #333; background: #010103; cursor: none; }
         .ui { position: absolute; top: 20px; text-align: center; width: 100%; pointer-events: none; }
         #corrosion-label { position: absolute; bottom: 55px; color: #ff0000; font-size: 12px; width: 100%; text-align: center; }
     </style>
 </head>
 <body>
     <div class="ui">
-        <h2 id="status">ESTADO DEL NÚCLEO: ESTABLE</h2>
+        <h2 id="status">SISTEMA EÓN v1.6</h2>
         <div id="score-display">FRAGMENTOS RECUPERADOS: 0</div>
     </div>
     <div id="corrosion-label">NIVEL DE CORROSIÓN DEL SISTEMA</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
-    // --- GENERADOR DE LOGO (FAVICON) ---
+    // --- ICONO DE PESTAÑA ---
     (function createFavicon() {
         const favCanvas = document.createElement('canvas');
-        favCanvas.width = 32;
-        favCanvas.height = 32;
+        favCanvas.width = 32; favCanvas.height = 32;
         const fctx = favCanvas.getContext('2d');
-        
-        // Círculo exterior (Cian)
-        fctx.fillStyle = '#00f2ff';
-        fctx.beginPath();
-        fctx.arc(16, 16, 14, 0, 7);
-        fctx.fill();
-        
-        // Núcleo (Negro/Materia)
-        fctx.fillStyle = '#000';
-        fctx.beginPath();
-        fctx.arc(16, 16, 6, 0, 7);
-        fctx.fill();
-
-        const link = document.createElement('link');
-        link.rel = 'icon';
-        link.href = favCanvas.toDataURL();
+        fctx.fillStyle = '#00f2ff'; fctx.beginPath(); fctx.arc(16, 16, 14, 0, 7); fctx.fill();
+        fctx.fillStyle = '#000'; fctx.beginPath(); fctx.arc(16, 16, 6, 0, 7); fctx.fill();
+        const link = document.createElement('link'); link.rel = 'icon'; link.href = favCanvas.toDataURL();
         document.head.appendChild(link);
     })();
 
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
 
     const audio = new (window.AudioContext || window.webkitAudioContext)();
     function sfx(f, t, d, g=0.1) {
@@ -59,14 +44,19 @@
 
     let score = 0, corrosion = 0, weaponType = 'normal', weaponTimer = 0;
     const player = { x: canvas.width/2, y: canvas.height/2, vx:0, vy:0, size:14 };
-    const enemies = [], bullets = [], powerups = [];
+    const enemies = [], bullets = [], powerups = [], stars = [], particles = [];
     let mouse = { x: 0, y: 0 };
     const keys = {};
 
+    // Crear estrellas para el fondo
+    for(let i=0; i<150; i++) {
+        stars.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, s: Math.random()*2, v: Math.random()*0.5 });
+    }
+
     window.onkeydown = e => keys[e.code] = true;
     window.onkeyup = e => keys[e.code] = false;
-
     window.onmousemove = e => { mouse.x = e.clientX; mouse.y = e.clientY; };
+    
     window.onmousedown = () => {
         const fire = (angleOffset = 0) => {
             const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x) + angleOffset;
@@ -83,40 +73,35 @@
         player.vx *= 0.94; player.vy *= 0.94;
         player.x += player.vx; player.y += player.vy;
 
-        corrosion += 0.02;
-
-        if(weaponTimer > 0) {
-            weaponTimer--;
-            if(weaponTimer <= 0) weaponType = 'normal';
+        // Estela del jugador
+        if(Math.abs(player.vx) + Math.abs(player.vy) > 1) {
+            particles.push({x: player.x, y: player.y, r: 4, a: 1, c: '#00f2ff'});
         }
 
+        corrosion += 0.02;
+        if(weaponTimer > 0) { weaponTimer--; if(weaponTimer <= 0) weaponType = 'normal'; }
+
         if(Math.random() < 0.06) {
-            enemies.push({
-                x: Math.random()*canvas.width, y: -20, 
-                speed: 3 + (score/20), 
-                stalk: Math.random() > 0.7
-            });
+            enemies.push({ x: Math.random()*canvas.width, y: -20, speed: 3 + (score/20), stalk: Math.random() > 0.7 });
         }
 
         enemies.forEach((en, i) => {
             if(en.stalk) {
                 const angle = Math.atan2(player.y - en.y, player.x - en.x);
-                en.x += Math.cos(angle) * en.speed;
-                en.y += Math.sin(angle) * en.speed;
+                en.x += Math.cos(angle) * en.speed; en.y += Math.sin(angle) * en.speed;
             } else { en.y += en.speed; }
 
             if(Math.hypot(player.x-en.x, player.y-en.y) < 25) {
-                corrosion += 15;
-                enemies.splice(i, 1);
-                sfx(60, 'square', 0.3, 0.2);
+                corrosion += 15; enemies.splice(i, 1); sfx(60, 'square', 0.3, 0.2);
             }
 
             bullets.forEach((b, bi) => {
                 if(Math.hypot(b.x-en.x, b.y-en.y) < 25) {
+                    // Partículas de explosión
+                    for(let p=0; p<5; p++) particles.push({x: en.x, y: en.y, r: Math.random()*5, a: 1, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, c: '#fff'});
                     if(Math.random() < 0.08) powerups.push({x: en.x, y: en.y});
                     enemies.splice(i, 1); bullets.splice(bi, 1);
-                    score++;
-                    corrosion = Math.max(0, corrosion - 1.5);
+                    score++; corrosion = Math.max(0, corrosion - 1.5);
                     document.getElementById('score-display').innerText = "FRAGMENTOS RECUPERADOS: " + score;
                 }
             });
@@ -127,12 +112,18 @@
             if(Math.hypot(player.x-p.x, player.y-p.y) < 30) {
                 weaponType = 'triple'; weaponTimer = 400;
                 corrosion = Math.max(0, corrosion - 10);
-                powerups.splice(i, 1);
-                sfx(600, 'sine', 0.2);
+                powerups.splice(i, 1); sfx(600, 'sine', 0.2);
             }
         });
 
         bullets.forEach((b, i) => { b.x += b.vx; b.y += b.vy; if(b.y < 0 || b.y > canvas.height) bullets.splice(i,1); });
+
+        // Actualizar partículas
+        particles.forEach((p, i) => {
+            if(p.vx) { p.x += p.vx; p.y += p.vy; }
+            p.a -= 0.05;
+            if(p.a <= 0) particles.splice(i, 1);
+        });
 
         if(corrosion >= 100) { location.reload(); }
     }
@@ -145,29 +136,37 @@
         ctx.save();
         ctx.translate(Math.random()*shake, Math.random()*shake);
 
+        // Dibujar estrellas (Fondo dinámico)
+        ctx.fillStyle = '#444';
+        stars.forEach(s => {
+            ctx.fillRect(s.x, s.y, s.s, s.s);
+            s.y += s.v; if(s.y > canvas.height) s.y = 0;
+        });
+
+        // Partículas
+        particles.forEach(p => {
+            ctx.globalAlpha = p.a; ctx.fillStyle = p.c;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        // Mira y Jugador
         ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 1;
         ctx.strokeRect(mouse.x - 10, mouse.y - 10, 20, 20);
-        ctx.beginPath(); ctx.moveTo(mouse.x, mouse.y - 15); ctx.lineTo(mouse.x, mouse.y + 15); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(mouse.x - 15, mouse.y); ctx.lineTo(mouse.x + 15, mouse.y); ctx.stroke();
-
         ctx.fillStyle = '#00f2ff'; ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
         ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, 7); ctx.fill();
 
-        powerups.forEach(p => {
-            ctx.fillStyle = '#ffff00'; ctx.shadowBlur = 20; ctx.shadowColor = '#ffff00';
-            ctx.fillRect(p.x-10, p.y-10, 20, 20);
-        });
-
+        // Powerups, Enemigos y Balas
+        powerups.forEach(p => { ctx.fillStyle = '#ffff00'; ctx.shadowBlur = 20; ctx.fillRect(p.x-10, p.y-10, 20, 20); });
         enemies.forEach(en => {
-            ctx.strokeStyle = en.stalk ? '#ff0000' : '#ffffff';
-            ctx.lineWidth = en.stalk ? 3 : 1;
+            ctx.strokeStyle = en.stalk ? '#ff0000' : '#ffffff'; ctx.lineWidth = en.stalk ? 3 : 1;
             ctx.strokeRect(en.x-15, en.y-15, 30, 30);
         });
-
         ctx.fillStyle = '#fff'; bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
 
         ctx.restore();
 
+        // Barra UI
         ctx.fillStyle = '#222'; ctx.fillRect(canvas.width/2 - 150, canvas.height - 40, 300, 15);
         ctx.fillStyle = corrosion > 70 ? '#ff0000' : '#00f2ff';
         ctx.fillRect(canvas.width/2 - 150, canvas.height - 40, corrosion * 3, 15);
