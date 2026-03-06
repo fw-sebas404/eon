@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>EÓN: SOBRECARGA - v1.5 (ORIGINAL)</title>
+    <style>
+        body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        canvas { border: 2px solid #555; background: #020205; cursor: none; }
+        .ui { position: absolute; top: 20px; text-align: center; width: 100%; pointer-events: none; }
+        #corrosion-label { position: absolute; bottom: 55px; color: #ff0000; font-size: 12px; width: 100%; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h2 id="status">ESTADO DEL NÚCLEO: ESTABLE</h2>
+        <div id="score-display">FRAGMENTOS RECUPERADOS: 0</div>
+    </div>
+    <div id="corrosion-label">NIVEL DE CORROSIÓN DEL SISTEMA</div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const audio = new (window.AudioContext || window.webkitAudioContext)();
+    function sfx(f, t, d, g=0.1) {
+        const o=audio.createOscillator(), v=audio.createGain();
+        o.type=t; o.frequency.value=f; v.gain.value=g;
+        o.connect(v); v.connect(audio.destination);
+        o.start(); o.stop(audio.currentTime+d);
+    }
+
+    let score = 0, corrosion = 0, weaponType = 'normal', weaponTimer = 0;
+    const player = { x: canvas.width/2, y: canvas.height/2, vx:0, vy:0, size:14 };
+    const enemies = [], bullets = [], powerups = [];
+    let mouse = { x: 0, y: 0 };
+    const keys = {};
+
+    window.onkeydown = e => keys[e.code] = true;
+    window.onkeyup = e => keys[e.code] = false;
+
+    window.onmousemove = e => { mouse.x = e.clientX; mouse.y = e.clientY; };
+    window.onmousedown = () => {
+        const fire = (angleOffset = 0) => {
+            const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x) + angleOffset;
+            bullets.push({x: player.x, y: player.y, vx: Math.cos(angle)*18, vy: Math.sin(angle)*18});
+        };
+        fire();
+        if(weaponType === 'triple') { fire(0.2); fire(-0.2); }
+        sfx(200, 'sawtooth', 0.05, 0.05);
+    };
+
+    function update() {
+        if(keys['KeyW']) player.vy -= 0.7; if(keys['KeyS']) player.vy += 0.7;
+        if(keys['KeyA']) player.vx -= 0.7; if(keys['KeyD']) player.vx += 0.7;
+        player.vx *= 0.94; player.vy *= 0.94;
+        player.x += player.vx; player.y += player.vy;
+
+        corrosion += 0.02;
+
+        if(weaponTimer > 0) {
+            weaponTimer--;
+            if(weaponTimer <= 0) weaponType = 'normal';
+        }
+
+        if(Math.random() < 0.06) {
+            enemies.push({
+                x: Math.random()*canvas.width, y: -20, 
+                speed: 3 + (score/20), 
+                stalk: Math.random() > 0.7
+            });
+        }
+
+        enemies.forEach((en, i) => {
+            if(en.stalk) {
+                const angle = Math.atan2(player.y - en.y, player.x - en.x);
+                en.x += Math.cos(angle) * en.speed;
+                en.y += Math.sin(angle) * en.speed;
+            } else { en.y += en.speed; }
+
+            if(Math.hypot(player.x-en.x, player.y-en.y) < 25) {
+                corrosion += 15;
+                enemies.splice(i, 1);
+                sfx(60, 'square', 0.3, 0.2);
+            }
+
+            bullets.forEach((b, bi) => {
+                if(Math.hypot(b.x-en.x, b.y-en.y) < 25) {
+                    if(Math.random() < 0.08) powerups.push({x: en.x, y: en.y});
+                    enemies.splice(i, 1); bullets.splice(bi, 1);
+                    score++;
+                    corrosion = Math.max(0, corrosion - 1);
+                    document.getElementById('score-display').innerText = "FRAGMENTOS RECUPERADOS: " + score;
+                }
+            });
+        });
+
+        powerups.forEach((p, i) => {
+            p.y += 1;
+            if(Math.hypot(player.x-p.x, player.y-p.y) < 30) {
+                weaponType = 'triple'; weaponTimer = 400;
+                corrosion = Math.max(0, corrosion - 10);
+                powerups.splice(i, 1);
+                sfx(600, 'sine', 0.2);
+            }
+        });
+
+        bullets.forEach((b, i) => { b.x += b.vx; b.y += b.vy; if(b.y < 0 || b.y > canvas.height) bullets.splice(i,1); });
+
+        if(corrosion >= 100) { location.reload(); }
+    }
+
+    function draw() {
+        let shake = (corrosion > 50) ? (corrosion - 50) / 5 : 0;
+        ctx.fillStyle = `rgb(${corrosion*2}, 0, ${10 - corrosion/10})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(Math.random()*shake, Math.random()*shake);
+
+        ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 1;
+        ctx.strokeRect(mouse.x - 10, mouse.y - 10, 20, 20);
+        ctx.beginPath(); ctx.moveTo(mouse.x, mouse.y - 15); ctx.lineTo(mouse.x, mouse.y + 15); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(mouse.x - 15, mouse.y); ctx.lineTo(mouse.x + 15, mouse.y); ctx.stroke();
+
+        ctx.fillStyle = '#00f2ff'; ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, 7); ctx.fill();
+
+        powerups.forEach(p => {
+            ctx.fillStyle = '#ffff00'; ctx.shadowBlur = 20; ctx.shadowColor = '#ffff00';
+            ctx.fillRect(p.x-10, p.y-10, 20, 20);
+        });
+
+        enemies.forEach(en => {
+            ctx.strokeStyle = en.stalk ? '#ff0000' : '#ffffff';
+            ctx.lineWidth = en.stalk ? 3 : 1;
+            ctx.strokeRect(en.x-15, en.y-15, 30, 30);
+        });
+
+        ctx.fillStyle = '#fff'; bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
+
+        ctx.restore();
+
+        ctx.fillStyle = '#222'; ctx.fillRect(canvas.width/2 - 150, canvas.height - 40, 300, 15);
+        ctx.fillStyle = corrosion > 70 ? '#ff0000' : '#00f2ff';
+        ctx.fillRect(canvas.width/2 - 150, canvas.height - 40, corrosion * 3, 15);
+    }
+
+    setInterval(() => { if(corrosion < 100) { update(); draw(); } }, 1000/60);
+</script>
+</body>
+</html>
