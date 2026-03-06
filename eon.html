@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>EÓN: SOBRECARGA - v1.5 (ORIGINAL)</title>
+    <title>EÓN: SOBRECARGA</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
         canvas { border: 2px solid #555; background: #020205; cursor: none; }
@@ -19,6 +19,31 @@
     <canvas id="gameCanvas"></canvas>
 
 <script>
+    // --- GENERADOR DE LOGO (FAVICON) ---
+    (function createFavicon() {
+        const favCanvas = document.createElement('canvas');
+        favCanvas.width = 32;
+        favCanvas.height = 32;
+        const fctx = favCanvas.getContext('2d');
+        
+        // Círculo exterior (Cian)
+        fctx.fillStyle = '#00f2ff';
+        fctx.beginPath();
+        fctx.arc(16, 16, 14, 0, 7);
+        fctx.fill();
+        
+        // Núcleo (Negro/Materia)
+        fctx.fillStyle = '#000';
+        fctx.beginPath();
+        fctx.arc(16, 16, 6, 0, 7);
+        fctx.fill();
+
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.href = favCanvas.toDataURL();
+        document.head.appendChild(link);
+    })();
+
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     canvas.width = window.innerWidth;
@@ -91,7 +116,7 @@
                     if(Math.random() < 0.08) powerups.push({x: en.x, y: en.y});
                     enemies.splice(i, 1); bullets.splice(bi, 1);
                     score++;
-                    corrosion = Math.max(0, corrosion - 1);
+                    corrosion = Math.max(0, corrosion - 1.5);
                     document.getElementById('score-display').innerText = "FRAGMENTOS RECUPERADOS: " + score;
                 }
             });
