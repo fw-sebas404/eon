@@ -2,24 +2,23 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>EÓN: HORIZONTE DE EVENTOS</title>
+    <title>EÓN: SINCRONÍA DE DESTRUCCIÓN - v1.7</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        canvas { border: 2px solid #333; background: #010103; cursor: none; }
+        canvas { border: 2px solid #444; background: #010103; cursor: none; }
         .ui { position: absolute; top: 20px; text-align: center; width: 100%; pointer-events: none; }
         #corrosion-label { position: absolute; bottom: 55px; color: #ff0000; font-size: 12px; width: 100%; text-align: center; }
     </style>
 </head>
 <body>
     <div class="ui">
-        <h2 id="status">SISTEMA EÓN v1.6</h2>
-        <div id="score-display">FRAGMENTOS RECUPERADOS: 0</div>
+        <h2 id="status">EÓN v1.7: ALERTA DE COMBATE</h2>
+        <div id="score-display">FRAGMENTOS: 0</div>
     </div>
     <div id="corrosion-label">NIVEL DE CORROSIÓN DEL SISTEMA</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
-    // --- ICONO DE PESTAÑA ---
     (function createFavicon() {
         const favCanvas = document.createElement('canvas');
         favCanvas.width = 32; favCanvas.height = 32;
@@ -35,36 +34,42 @@
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
 
     const audio = new (window.AudioContext || window.webkitAudioContext)();
+    const mainGain = audio.createGain(); mainGain.connect(audio.destination);
+    
+    // Música ambiental adaptativa
+    const drone = audio.createOscillator();
+    const droneGain = audio.createGain();
+    drone.type = 'sawtooth'; drone.frequency.value = 40;
+    droneGain.gain.value = 0.02;
+    drone.connect(droneGain); droneGain.connect(mainGain);
+    drone.start();
+
     function sfx(f, t, d, g=0.1) {
         const o=audio.createOscillator(), v=audio.createGain();
         o.type=t; o.frequency.value=f; v.gain.value=g;
-        o.connect(v); v.connect(audio.destination);
+        o.connect(v); v.connect(mainGain);
         o.start(); o.stop(audio.currentTime+d);
     }
 
-    let score = 0, corrosion = 0, weaponType = 'normal', weaponTimer = 0;
+    let score = 0, corrosion = 0, weaponType = 'normal', weaponTimer = 0, shake = 0;
     const player = { x: canvas.width/2, y: canvas.height/2, vx:0, vy:0, size:14 };
-    const enemies = [], bullets = [], powerups = [], stars = [], particles = [];
-    let mouse = { x: 0, y: 0 };
-    const keys = {};
+    const enemies = [], bullets = [], enemyBullets = [], powerups = [], stars = [], particles = [];
+    const keys = {}; let mouse = { x: 0, y: 0 };
 
-    // Crear estrellas para el fondo
-    for(let i=0; i<150; i++) {
-        stars.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, s: Math.random()*2, v: Math.random()*0.5 });
-    }
+    for(let i=0; i<150; i++) stars.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, s: Math.random()*2, v: Math.random()*0.5 });
 
     window.onkeydown = e => keys[e.code] = true;
     window.onkeyup = e => keys[e.code] = false;
     window.onmousemove = e => { mouse.x = e.clientX; mouse.y = e.clientY; };
     
     window.onmousedown = () => {
-        const fire = (angleOffset = 0) => {
-            const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x) + angleOffset;
-            bullets.push({x: player.x, y: player.y, vx: Math.cos(angle)*18, vy: Math.sin(angle)*18});
+        const fire = (off = 0) => {
+            const ang = Math.atan2(mouse.y - player.y, mouse.x - player.x) + off;
+            bullets.push({x: player.x, y: player.y, vx: Math.cos(ang)*18, vy: Math.sin(ang)*18});
         };
         fire();
-        if(weaponType === 'triple') { fire(0.2); fire(-0.2); }
-        sfx(200, 'sawtooth', 0.05, 0.05);
+        if(weaponType === 'triple') { fire(0.15); fire(-0.15); shake = 5; }
+        sfx(200, 'sine', 0.1, 0.05);
     };
 
     function update() {
@@ -73,100 +78,96 @@
         player.vx *= 0.94; player.vy *= 0.94;
         player.x += player.vx; player.y += player.vy;
 
-        // Estela del jugador
-        if(Math.abs(player.vx) + Math.abs(player.vy) > 1) {
-            particles.push({x: player.x, y: player.y, r: 4, a: 1, c: '#00f2ff'});
-        }
-
         corrosion += 0.02;
-        if(weaponTimer > 0) { weaponTimer--; if(weaponTimer <= 0) weaponType = 'normal'; }
+        drone.frequency.value = 40 + (corrosion * 2); // El sonido sube con la corrosión
+        if(shake > 0) shake *= 0.9;
 
         if(Math.random() < 0.06) {
-            enemies.push({ x: Math.random()*canvas.width, y: -20, speed: 3 + (score/20), stalk: Math.random() > 0.7 });
+            const type = Math.random() > 0.85 ? 'gunner' : (Math.random() > 0.7 ? 'stalker' : 'normal');
+            enemies.push({ x: Math.random()*canvas.width, y: -20, speed: 2 + (score/30), type, timer: 0 });
         }
 
         enemies.forEach((en, i) => {
-            if(en.stalk) {
-                const angle = Math.atan2(player.y - en.y, player.x - en.x);
-                en.x += Math.cos(angle) * en.speed; en.y += Math.sin(angle) * en.speed;
+            if(en.type === 'stalker') {
+                const ang = Math.atan2(player.y - en.y, player.x - en.x);
+                en.x += Math.cos(ang) * en.speed; en.y += Math.sin(ang) * en.speed;
+            } else if(en.type === 'gunner') {
+                if(en.y < 150) en.y += en.speed;
+                en.timer++;
+                if(en.timer % 100 === 0) {
+                    const ang = Math.atan2(player.y - en.y, player.x - en.x);
+                    enemyBullets.push({x: en.x, y: en.y, vx: Math.cos(ang)*6, vy: Math.sin(ang)*6});
+                    sfx(100, 'square', 0.1, 0.03);
+                }
             } else { en.y += en.speed; }
 
             if(Math.hypot(player.x-en.x, player.y-en.y) < 25) {
-                corrosion += 15; enemies.splice(i, 1); sfx(60, 'square', 0.3, 0.2);
+                corrosion += 20; enemies.splice(i, 1); sfx(50, 'sawtooth', 0.3);
             }
 
             bullets.forEach((b, bi) => {
-                if(Math.hypot(b.x-en.x, b.y-en.y) < 25) {
-                    // Partículas de explosión
-                    for(let p=0; p<5; p++) particles.push({x: en.x, y: en.y, r: Math.random()*5, a: 1, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, c: '#fff'});
-                    if(Math.random() < 0.08) powerups.push({x: en.x, y: en.y});
+                if(Math.hypot(b.x-en.x, b.y-en.y) < 30) {
+                    for(let p=0; p<6; p++) particles.push({x: en.x, y: en.y, r: Math.random()*4, a: 1, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, c: '#fff'});
+                    if(Math.random() < 0.1) powerups.push({x: en.x, y: en.y});
                     enemies.splice(i, 1); bullets.splice(bi, 1);
                     score++; corrosion = Math.max(0, corrosion - 1.5);
-                    document.getElementById('score-display').innerText = "FRAGMENTOS RECUPERADOS: " + score;
+                    document.getElementById('score-display').innerText = "FRAGMENTOS: " + score;
                 }
             });
+        });
+
+        enemyBullets.forEach((eb, i) => {
+            eb.x += eb.vx; eb.y += eb.vy;
+            if(Math.hypot(player.x-eb.x, player.y-eb.y) < 15) {
+                corrosion += 10; enemyBullets.splice(i, 1); sfx(150, 'sine', 0.1);
+            }
         });
 
         powerups.forEach((p, i) => {
             p.y += 1;
             if(Math.hypot(player.x-p.x, player.y-p.y) < 30) {
-                weaponType = 'triple'; weaponTimer = 400;
-                corrosion = Math.max(0, corrosion - 10);
+                weaponType = 'triple'; weaponTimer = 400; corrosion = Math.max(0, corrosion - 10);
                 powerups.splice(i, 1); sfx(600, 'sine', 0.2);
             }
         });
 
         bullets.forEach((b, i) => { b.x += b.vx; b.y += b.vy; if(b.y < 0 || b.y > canvas.height) bullets.splice(i,1); });
-
-        // Actualizar partículas
-        particles.forEach((p, i) => {
-            if(p.vx) { p.x += p.vx; p.y += p.vy; }
-            p.a -= 0.05;
-            if(p.a <= 0) particles.splice(i, 1);
-        });
+        particles.forEach((p, i) => { p.x += p.vx || 0; p.y += p.vy || 0; p.a -= 0.04; if(p.a <= 0) particles.splice(i, 1); });
 
         if(corrosion >= 100) { location.reload(); }
     }
 
     function draw() {
-        let shake = (corrosion > 50) ? (corrosion - 50) / 5 : 0;
+        let cShake = shake + (corrosion > 60 ? (corrosion-60)/4 : 0);
         ctx.fillStyle = `rgb(${corrosion*2}, 0, ${10 - corrosion/10})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.save();
-        ctx.translate(Math.random()*shake, Math.random()*shake);
+        ctx.translate((Math.random()-0.5)*cShake, (Math.random()-0.5)*cShake);
 
-        // Dibujar estrellas (Fondo dinámico)
-        ctx.fillStyle = '#444';
-        stars.forEach(s => {
-            ctx.fillRect(s.x, s.y, s.s, s.s);
-            s.y += s.v; if(s.y > canvas.height) s.y = 0;
-        });
+        ctx.fillStyle = '#333'; stars.forEach(s => { ctx.fillRect(s.x, s.y, s.s, s.s); s.y += s.v; if(s.y > canvas.height) s.y = 0; });
 
-        // Partículas
-        particles.forEach(p => {
-            ctx.globalAlpha = p.a; ctx.fillStyle = p.c;
-            ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
-        });
+        particles.forEach(p => { ctx.globalAlpha = p.a; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); });
         ctx.globalAlpha = 1;
 
-        // Mira y Jugador
-        ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 1;
-        ctx.strokeRect(mouse.x - 10, mouse.y - 10, 20, 20);
+        ctx.strokeStyle = '#00f2ff'; ctx.strokeRect(mouse.x - 10, mouse.y - 10, 20, 20);
         ctx.fillStyle = '#00f2ff'; ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
         ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, 7); ctx.fill();
 
-        // Powerups, Enemigos y Balas
         powerups.forEach(p => { ctx.fillStyle = '#ffff00'; ctx.shadowBlur = 20; ctx.fillRect(p.x-10, p.y-10, 20, 20); });
+        
         enemies.forEach(en => {
-            ctx.strokeStyle = en.stalk ? '#ff0000' : '#ffffff'; ctx.lineWidth = en.stalk ? 3 : 1;
-            ctx.strokeRect(en.x-15, en.y-15, 30, 30);
+            ctx.strokeStyle = en.type === 'gunner' ? '#fff' : (en.type === 'stalker' ? '#f00' : '#888');
+            ctx.lineWidth = en.type === 'normal' ? 1 : 3;
+            ctx.save(); ctx.translate(en.x, en.y);
+            if(en.type === 'gunner') ctx.rotate(Math.PI/4);
+            ctx.strokeRect(-15, -15, 30, 30); ctx.restore();
         });
+
         ctx.fillStyle = '#fff'; bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
+        ctx.fillStyle = '#f00'; enemyBullets.forEach(eb => ctx.fillRect(eb.x-3, eb.y-3, 6, 6));
 
         ctx.restore();
-
-        // Barra UI
         ctx.fillStyle = '#222'; ctx.fillRect(canvas.width/2 - 150, canvas.height - 40, 300, 15);
         ctx.fillStyle = corrosion > 70 ? '#ff0000' : '#00f2ff';
         ctx.fillRect(canvas.width/2 - 150, canvas.height - 40, corrosion * 3, 15);
